@@ -1,8 +1,14 @@
 classdef ddspPlugin < audioPlugin
     
+    properties (Access = private, Constant)
+        BufSize = 20000;
+    end
+    
     properties (Access = private)
         Dec;
         Synth;
+        AudioBuf = zeros(ddspPlugin.BufSize, 1);
+        BufIdx = 0;
     end
     
     properties
@@ -42,13 +48,25 @@ classdef ddspPlugin < audioPlugin
             out = nan(size(in));
             sampleRate = plugin.getSampleRate();
             
+            % 250 is the frame rate of the violin model
+            frameSize = floor(sampleRate / 250);
+            
             amps = decoderOut(1);
             harmDist = decoderOut(2:61);
             noiseMag = decoderOut(62:126);
             
-            audio = plugin.Synth.getAudio(plugin.F0, amps, harmDist, noiseMag, sampleRate, nSamples);
-            out(:,1) = audio;
-            out(:,2) = audio;
+            while plugin.BufIdx < nSamples
+                frame = plugin.Synth.getAudio(plugin.F0, amps, harmDist, noiseMag, sampleRate, frameSize); 
+                plugin.AudioBuf(plugin.BufIdx+1:plugin.BufIdx+frameSize) = frame;
+                plugin.BufIdx = plugin.BufIdx + frameSize;
+            end
+            
+            out(:,1) = plugin.AudioBuf(1:nSamples,:);
+            out(:,2) = plugin.AudioBuf(1:nSamples,:);
+            
+            overflow = plugin.BufIdx - nSamples;
+            plugin.AudioBuf(1:overflow) = plugin.AudioBuf(nSamples+1:plugin.BufIdx);
+            plugin.BufIdx = overflow; % never negative because of while loop
         end
     end
 end
