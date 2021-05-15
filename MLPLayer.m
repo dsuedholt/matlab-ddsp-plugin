@@ -1,10 +1,10 @@
-classdef FullyConnectedLayer < handle
+classdef MLPLayer < handle
     properties (Access = private)
         Kernel, Bias, Beta, Gamma, Epsilon, Alpha
     end
     
     methods
-        function obj = FullyConnectedLayer(kernel, bias, beta, gamma, epsilon, alpha)
+        function obj = MLPLayer(kernel, bias, beta, gamma, epsilon, alpha)
             obj.Kernel = double(kernel);
             obj.Bias = double(bias);
             obj.Beta = double(beta);
