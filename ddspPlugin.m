@@ -11,6 +11,7 @@ classdef ddspPlugin < audioPlugin
         OutBuf;
         currFrameSize;
         currL;
+        prevF0 = ddspPlugin.F0MIN;
         nls;
     end
     
@@ -90,8 +91,13 @@ classdef ddspPlugin < audioPlugin
 
                 ldScaled = ld / (plugin.LDMAX - plugin.LDMIN) + 1;
 
-                f0 = plugin.nls.estimate(in);
-                f0Scaled = hzToMidi(f0(1)) / 127;
+                f0 = plugin.nls.estimate(in) * sampleRate;
+                f0 = f0(1);
+                if isnan(f0)
+                    f0 = plugin.prevF0;
+                end
+                plugin.prevF0 = f0;
+                f0Scaled = hzToMidi(f0) / 127;
 
                 decoderOut = plugin.Dec.call(ldScaled, f0Scaled);
                 
@@ -99,7 +105,7 @@ classdef ddspPlugin < audioPlugin
                 harmDist = decoderOut(2:61);
                 noiseMag = decoderOut(62:126);
 
-                frame = plugin.Synth.getAudio(f0(1), amps, harmDist, noiseMag, sampleRate, plugin.FrameSize); 
+                frame = plugin.Synth.getAudio(f0, amps, harmDist, noiseMag, sampleRate, plugin.FrameSize); 
                 plugin.OutBuf.write(frame);
             end
         end
