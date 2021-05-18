@@ -9,11 +9,13 @@ classdef ddspPlugin < audioPlugin
         Synth;
         InBuf;
         OutBuf;
+        currFrameSize;
+        currL;
         nls;
     end
     
     properties
-        L = 1;
+        L = 2;
         Ld = 1;
         F0low = 27;
         F0high = 4800;
@@ -38,7 +40,7 @@ classdef ddspPlugin < audioPlugin
                 'Mapping', {'log', ddspPlugin.F0MIN, ddspPlugin.F0MAX}), ... 
             audioPluginParameter('L', ...
                 'DisplayName', 'Model Order', ...
-                'Mapping', {'int', 1, 10}), ...
+                'Mapping', {'int', 2, 10}), ...
             audioPluginParameter('Ld', ...
                 'DisplayName', 'input gain', ...
                 'Mapping', {'log', 0.001, 100}),...
@@ -53,6 +55,9 @@ classdef ddspPlugin < audioPlugin
             plugin.Synth = SpectralModelingSynth;
             plugin.InBuf = CircularBuffer(plugin.BufSize);
             plugin.OutBuf = CircularBuffer(plugin.BufSize, plugin.FrameSize);
+            plugin.nls = fastNLS(512, 5, [0.1, 0.2]);
+            plugin.currFrameSize = plugin.FrameSize;
+            plugin.currL = plugin.L;
         end
       
         function out = process(plugin, in)
@@ -61,7 +66,19 @@ classdef ddspPlugin < audioPlugin
             out = plugin.OutBuf.read(length(in));
         end
 
+        function reset(plugin)
+            plugin.currL = plugin.L;
+            plugin.currFrameSize = plugin.FrameSize;
+            freqmin = plugin.F0MIN / plugin.getSampleRate;
+            freqmax = plugin.F0MAX / plugin.getSampleRate;
+            plugin.nls.reset(plugin.FrameSize, plugin.L, [freqmin, freqmax]);
+        end
+        
         function generateAudio(plugin)
+            if (plugin.L ~= plugin.currL) || (plugin.FrameSize ~= plugin.currFrameSize)
+                plugin.reset;
+            end
+            
             sampleRate = plugin.getSampleRate;
             
             while plugin.InBuf.nElems >= plugin.FrameSize
@@ -73,32 +90,7 @@ classdef ddspPlugin < audioPlugin
 
                 ldScaled = ld / (plugin.LDMAX - plugin.LDMIN) + 1;
 
-                ls = 1:plugin.L;
-                
-                nFft = 5*plugin.FrameSize*plugin.L;
-                spec = abs(fft([in; zeros(nFft - plugin.FrameSize, 1)])).^2;
-
-                kstart = floor(nFft * plugin.F0low / sampleRate);
-                kstop = ceil(nFft * plugin.F0high / sampleRate);
-
-                if (kstart > kstop)
-                    kstart=kstop-1;
-                end
-
-                bestk = 0;
-                bestval = 0;
-                for i=kstart:kstop
-                    if (i+1) * ls(end) > nFft
-                        ls = ls(1:end-1);
-                    end
-                    val = sum(spec((i+1)*ls));
-                    if val > bestval
-                        bestk = i;
-                        bestval = val;
-                    end
-                end
-
-                f0 = sampleRate * bestk / nFft;
+                f0 = plugin.nls.estimate(in);
                 f0Scaled = hzToMidi(f0(1)) / 127;
 
                 decoderOut = plugin.Dec.call(ldScaled, f0Scaled);
