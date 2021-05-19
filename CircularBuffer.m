@@ -29,6 +29,16 @@ classdef CircularBuffer < handle
             obj.ReadIdx = mod(stopIdx, obj.BufSize) + 1;
         end
         
+        function out = recentHistory(obj, nElems)
+            startIdx = obj.WriteIdx - nElems;
+            if startIdx > 0
+                out = obj.Buffer(startIdx:obj.WriteIdx-1);
+            else
+                startIdx = startIdx + obj.BufSize;
+                out = [obj.Buffer(startIdx:end); obj.Buffer(1:obj.WriteIdx-1)];
+            end
+        end
+        
         function write(obj, vals)
             nElems = length(vals);
             stopIdx = obj.WriteIdx + nElems - 1;

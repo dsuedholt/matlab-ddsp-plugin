@@ -35,25 +35,22 @@ classdef SpectralModelingSynth < handle
             noiseMag = SpectralModelingSynth.scaleFn(noiseMag - 5);
 
             noise = rand(1, nSamples) * 2 - 1;
+            
+            nMags = length(noiseMag);
+            
 
-            filterSize = 64;
-            win = hann(129)';
-
-            H = [noiseMag noiseMag(65:-1:2)];
+            H = [noiseMag zeros(1, 2*(nMags-1)) noiseMag(nMags:-1:2)];
             h = ifft(H);
+            
+            filterSize = length(h);
+            win = hann(filterSize, 'periodic')';
+            h = win .* [h(floor(filterSize/2)+1:filterSize)  h(1:floor(filterSize/2))];
 
-            h = [win(1:64) .* h(66:129) win(65:129) .* h(1:65)];
-            %if length(h) < nSamples
-                %h = [h zeros(1, nSamples - 129)];
-            %end
+            h = [h(floor(filterSize/2)+2:filterSize) zeros(1, nSamples - filterSize) h(1:floor(filterSize/2)+1)];
 
-            h = [h(65:end) h(1:64)];
-
-            if nSamples < 129
-                out = zeros(1, nSamples)';
-            else
-                out = real(ifft(fft([h zeros(1, nSamples - 129)]) .* fft(noise)))';
-            end
+            % call to real only needed for coder
+            out = real(ifft(fft([zeros(1, nSamples) h]) .* fft([noise zeros(1, nSamples)])))';
+            out = out(nSamples+1:end, 1);
         end
         
         function out = getAudio(obj,f0,amp,harmDist,noiseMag,sampleRate,nSamples)        

@@ -10,44 +10,66 @@ classdef ddspPlugin < audioPlugin
         InBuf;
         OutBuf;
         currFrameSize;
-        currL;
-        prevF0 = ddspPlugin.F0MIN;
-        nls;
+        PrevFrame;
     end
     
     properties
         L = 2;
-        Ld = 1;
-        F0low = 27;
-        F0high = 4800;
+        FreqScale = 0;
+        InGain = 0;
+        OutGain = 0;
         FrameSize = 512;
+        fftResol = 5;
     end
     
     properties (Constant)
         LDMIN = -120;
         LDMAX = 0;
         % Midi piano keyboard range
-        F0MIN = 27;
-        F0MAX = 4800;
+        F0MIN = 60;
+        F0MAX = 5000;
         
         PluginInterface = audioPluginInterface( ...
             'InputChannels', 1, ...
             'OutputChannels', 1, ...
-            audioPluginParameter('F0low', ...
-                'DisplayName', 'Lower Freq Bound', ...
-                'Mapping', {'log', ddspPlugin.F0MIN, ddspPlugin.F0MAX}), ... 
-                audioPluginParameter('F0high', ...
-                'DisplayName', 'Upper Freq Bound', ...
-                'Mapping', {'log', ddspPlugin.F0MIN, ddspPlugin.F0MAX}), ... 
+            audioPluginParameter('InGain', ...
+                'DisplayName', 'Input Gain', ...
+                'DisplayNameLocation', 'above',...
+                'Label', 'dB', ...
+                'Mapping', {'lin', -10, 10},...
+                'Style', 'rotaryknob',...
+                'Layout', [2 1]),...
+            audioPluginParameter('FreqScale', ...
+                'DisplayName', 'Octave Shift', ...
+                'DisplayNameLocation', 'above',...
+                'Mapping', {'int', -2, 2},...
+                'Style', 'rotaryknob',...
+                'Layout', [2 2]),...
+            audioPluginParameter('OutGain', ...
+                'DisplayName', 'Output Gain', ...
+                'DisplayNameLocation', 'above',...
+                'Label', 'dB', ...
+                'Mapping', {'lin', -10, 10},...
+                'Style', 'rotaryknob',...
+                'Layout', [2 3]),...
             audioPluginParameter('L', ...
-                'DisplayName', 'Model Order', ...
-                'Mapping', {'int', 2, 10}), ...
-            audioPluginParameter('Ld', ...
-                'DisplayName', 'input gain', ...
-                'Mapping', {'log', 0.001, 100}),...
+                'DisplayName', 'Harmonic Order', ...
+                'DisplayNameLocation', 'left', ...
+                'Mapping', {'int', 1, 10}, ...
+                'Layout', [3 2; 3 3]),...
+            audioPluginParameter('fftResol',...
+                'DisplayName', 'Pitch Resolution', ...
+                'DisplayNameLocation', 'left', ...
+                'Mapping', {'int', 1, 10},...
+                'Layout', [4 2; 4 3]),...
             audioPluginParameter('FrameSize', ...
                 'DisplayName', 'Frame Size', ...
-                'Mapping', {'int', 64, 2048}));
+                'DisplayNameLocation', 'left', ...
+                'Mapping', {'int', 300, 2048},...
+                'Layout', [5 2; 5 3]),...
+            audioPluginGridLayout( ...
+                'RowHeight', [100 100 100 100 100],...
+                'ColumnWidth', [150 150 150]));
     end
     
     methods
@@ -56,31 +78,26 @@ classdef ddspPlugin < audioPlugin
             plugin.Synth = SpectralModelingSynth;
             plugin.InBuf = CircularBuffer(plugin.BufSize);
             plugin.OutBuf = CircularBuffer(plugin.BufSize, plugin.FrameSize);
-            plugin.nls = fastNLS(512, 5, [0.1, 0.2]);
             plugin.currFrameSize = plugin.FrameSize;
-            plugin.currL = plugin.L;
+            plugin.PrevFrame = zeros(ceil(plugin.FrameSize/2), 1);
         end
       
         function out = process(plugin, in)
-            if (plugin.L ~= plugin.currL)...
-                || (plugin.FrameSize ~= plugin.currFrameSize)
+            if (plugin.FrameSize ~= plugin.currFrameSize)
                 plugin.reset;
             end
-            plugin.InBuf.write(plugin.Ld * in);
+            plugin.InBuf.write(in);
             plugin.generateAudio();
             out = plugin.OutBuf.read(length(in));
         end
 
         function reset(plugin)
-            plugin.currL = plugin.L;
             plugin.currFrameSize = plugin.FrameSize;
-
+            plugin.setLatencyInSamples(plugin.FrameSize);
+            plugin.PrevFrame =  zeros(ceil(plugin.FrameSize/2), 1);
             plugin.Dec.reset;
             plugin.InBuf.reset;
             plugin.OutBuf.reset(plugin.FrameSize);
-            freqmin = plugin.F0MIN / plugin.getSampleRate;
-            freqmax = plugin.F0MAX / plugin.getSampleRate;
-            plugin.nls.reset(plugin.FrameSize, plugin.L, [freqmin, freqmax]);
         end
         
         function generateAudio(plugin)
@@ -89,18 +106,44 @@ classdef ddspPlugin < audioPlugin
             while plugin.InBuf.nElems >= plugin.FrameSize
                 in = plugin.InBuf.read(plugin.FrameSize);
                 
+                downsampled = downsample(in, 2);
+                pitchFrameSize = length(downsampled);
+                pitchFrame = [plugin.PrevFrame; downsampled] .* hann(pitchFrameSize*2, 'periodic');
+                plugin.PrevFrame = downsampled(1:pitchFrameSize,1);
+                
                 power = sum(in.^2) / plugin.FrameSize;
 
-                ld = -0.691 + 10*log10(power);
+                ld = -0.691 + 10*log10(power) + plugin.InGain;
 
                 ldScaled = ld / (plugin.LDMAX - plugin.LDMIN) + 1;
 
-                f0 = plugin.nls.estimate(in) * sampleRate;
-                f0 = f0(1);
-                if isnan(f0)
-                    f0 = plugin.prevF0;
+                ls = 1:plugin.L;
+                
+                nFft = round(plugin.fftResol*pitchFrameSize*2*plugin.L);
+                spec = abs(fft([pitchFrame; zeros(nFft - pitchFrameSize*2, 1)])).^2;
+
+                kstart = ceil(nFft * plugin.F0MIN / (sampleRate * pitchFrameSize / plugin.FrameSize));
+                kstop = floor(nFft * plugin.F0MAX / (sampleRate * pitchFrameSize / plugin.FrameSize));
+
+                if (kstart > kstop)
+                    kstart=kstop;
                 end
-                plugin.prevF0 = f0;
+                
+                bestk = 0;
+                bestval = 0;
+                for i=kstart:kstop
+                    if (i+1) * ls(end) > nFft
+                        ls = ls(1:end-1);
+                    end
+                    val = sum(spec((i+1)*ls));
+                    if val > bestval
+                        bestk = i;
+                        bestval = val;
+                    end
+                end
+
+                f0 = sampleRate * (pitchFrameSize / plugin.FrameSize) * bestk / nFft;
+                f0 = f0 * 2^plugin.FreqScale;
                 f0Scaled = hzToMidi(f0) / 127;
 
                 decoderOut = plugin.Dec.call(ldScaled, f0Scaled);
@@ -110,7 +153,7 @@ classdef ddspPlugin < audioPlugin
                 noiseMag = decoderOut(62:126);
 
                 frame = plugin.Synth.getAudio(f0, amps, harmDist, noiseMag, sampleRate, plugin.FrameSize); 
-                plugin.OutBuf.write(frame);
+                plugin.OutBuf.write(frame * 10^(plugin.OutGain/20));
             end
         end
     end
