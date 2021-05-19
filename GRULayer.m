@@ -63,6 +63,10 @@ classdef GRULayer < handle
             obj.State = h;
             out = h;
         end
+        
+        function reset(obj)
+            obj.State = zeros(1, obj.NumHiddenUnits);
+        end
     end
     
     methods (Static)

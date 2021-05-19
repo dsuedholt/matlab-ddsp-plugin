@@ -9,12 +9,11 @@ classdef CircularBuffer < handle
     methods
         function obj = CircularBuffer(bufSize, initialWriteIdx)
             obj.BufSize = bufSize;
-            obj.Buffer = zeros(bufSize, 1);
-            obj.ReadIdx = 1;
+            
             if (nargin > 1)
-                obj.WriteIdx = initialWriteIdx;
+                obj.reset(initialWriteIdx);
             else
-                obj.WriteIdx = 1;
+                obj.reset;
             end
         end
         
@@ -42,6 +41,16 @@ classdef CircularBuffer < handle
             end
             
             obj.WriteIdx = mod(stopIdx, obj.BufSize) + 1;
+        end
+        
+        function reset(obj, initialWriteIdx)
+            obj.Buffer = zeros(obj.BufSize, 1);
+            obj.ReadIdx = 1;
+            if (nargin > 1)
+                obj.WriteIdx = initialWriteIdx;
+            else
+                obj.WriteIdx = 1;
+            end
         end
         
         function out = nElems(obj)

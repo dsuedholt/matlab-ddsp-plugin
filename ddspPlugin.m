@@ -52,7 +52,7 @@ classdef ddspPlugin < audioPlugin
     
     methods
         function plugin = ddspPlugin
-            plugin.Dec = Decoder('violinWeights.mat');
+            plugin.Dec = Decoder(plugin.ModelFile);
             plugin.Synth = SpectralModelingSynth;
             plugin.InBuf = CircularBuffer(plugin.BufSize);
             plugin.OutBuf = CircularBuffer(plugin.BufSize, plugin.FrameSize);
@@ -62,6 +62,10 @@ classdef ddspPlugin < audioPlugin
         end
       
         function out = process(plugin, in)
+            if (plugin.L ~= plugin.currL)...
+                || (plugin.FrameSize ~= plugin.currFrameSize)
+                plugin.reset;
+            end
             plugin.InBuf.write(plugin.Ld * in);
             plugin.generateAudio();
             out = plugin.OutBuf.read(length(in));
@@ -70,16 +74,16 @@ classdef ddspPlugin < audioPlugin
         function reset(plugin)
             plugin.currL = plugin.L;
             plugin.currFrameSize = plugin.FrameSize;
+
+            plugin.Dec.reset;
+            plugin.InBuf.reset;
+            plugin.OutBuf.reset(plugin.FrameSize);
             freqmin = plugin.F0MIN / plugin.getSampleRate;
             freqmax = plugin.F0MAX / plugin.getSampleRate;
             plugin.nls.reset(plugin.FrameSize, plugin.L, [freqmin, freqmax]);
         end
         
         function generateAudio(plugin)
-            if (plugin.L ~= plugin.currL) || (plugin.FrameSize ~= plugin.currFrameSize)
-                plugin.reset;
-            end
-            
             sampleRate = plugin.getSampleRate;
             
             while plugin.InBuf.nElems >= plugin.FrameSize

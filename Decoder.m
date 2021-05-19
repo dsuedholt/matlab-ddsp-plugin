@@ -57,5 +57,9 @@ classdef Decoder < handle
             
             out = out * obj.OutProjKernel + obj.OutProjBias;
         end
+        
+        function reset(obj)
+            obj.GRU.reset;
+        end
     end
 end
