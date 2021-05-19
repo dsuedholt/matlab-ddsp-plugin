@@ -146,13 +146,9 @@ classdef ddspPlugin < audioPlugin
                 f0 = f0 * 2^plugin.FreqScale;
                 f0Scaled = hzToMidi(f0) / 127;
 
-                decoderOut = plugin.Dec.call(ldScaled, f0Scaled);
-                
-                amps = decoderOut(1);
-                harmDist = decoderOut(2:61);
-                noiseMag = decoderOut(62:126);
+                [amp, harmDist, noiseMags] = plugin.Dec.call(ldScaled, f0Scaled);
 
-                frame = plugin.Synth.getAudio(f0, amps, harmDist, noiseMag, sampleRate, plugin.FrameSize); 
+                frame = plugin.Synth.getAudio(f0, amp, harmDist, noiseMags, sampleRate, plugin.FrameSize); 
                 plugin.OutBuf.write(frame * 10^(plugin.OutGain/20));
             end
         end

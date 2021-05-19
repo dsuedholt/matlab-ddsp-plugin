@@ -1,14 +1,39 @@
 classdef Decoder < handle
+% DECODER Construct the decoder part of the DDSP Autoencoder from a file of
+% weights
+%
+%  This class loads its model weights from the supplied .mat file and 
+%  constructs the inference-only decoder network of the DDSP Autoencoder.
+%  
+%  Given normalized values for loudness and pitch, the decoder predicts an 
+%  amplitude, a harmonic distribution and a filter magnitude response that 
+%  can be used by the SpectralModelingSynth to generate a frame of audio.
+%
+%  This decoder implements the RnnFcDecoder class from the DDSP python
+%  code: Loudness and pitch values are passed through their respective
+%  stacks of feed-forward layers (the number of layers is fixed here
+%  because of coder restrictions). The output of the two stacks is then
+%  concatenated and passed through a recurrent layer, whose output is used
+%  to predict the synthesizer parameters.
+
     properties (Access = private)
-        LdLayer1, LdLayer2, LdLayer3
-        F0Layer1, F0Layer2, F0Layer3
-        GRU
-        OutLayer1, OutLayer2, OutLayer3
-        OutProjKernel, OutProjBias
+        LdLayer1, LdLayer2, LdLayer3;    % Feed-forward stack for loudness
+        F0Layer1, F0Layer2, F0Layer3;    % Feed-forward stack for f0
+        GRU;                             % Recurrent layer  
+        OutLayer1, OutLayer2, OutLayer3; % Feed-forward stack for the GRU output
+        OutProjKernel, OutProjBias;      % Final projection layer
     end
 
+    properties (Constant)
+        nHarmonics = 60;  % Number of harmonics for the additive synthesis
+        nMagnitudes = 65; % Number of magnitudes for the filtered noise
+    end
+    
     methods
         function obj = Decoder(weightfile)
+            % The constructor reads a supplied .mat file and loads all
+            % weights into their respective layers.
+            
             w = coder.load(weightfile);
             
             obj.LdLayer1 = MLPLayer(w.ld_dense_0_kernel, w.ld_dense_0_bias,...
@@ -38,7 +63,20 @@ classdef Decoder < handle
             obj.OutProjBias   = double(w.outsplit_bias);
         end
         
-        function out = call(obj, ld, f0)
+        function [amp, harmDist, noiseMags] = call(obj, ld, f0)
+            % Predict synthesizer parameters for one frame of audio.
+            % Inputs:
+            %    ld   : normalized loudness in dB
+            %    f0   : normalized pitch
+            % 
+            % Outputs:
+            %    amp      : The overall amplitude for the additive synthesis
+            %    harmDist : The amplitudes of the individual harmonics
+            %    noiseMags: The magnitude response of the filter applied to
+            %               white noise
+            
+          
+            % pass inputs through feed-forward stacks
             ld = obj.LdLayer1.call(ld);
             ld = obj.LdLayer2.call(ld);
             ld = obj.LdLayer3.call(ld);
@@ -47,18 +85,24 @@ classdef Decoder < handle
             f0 = obj.F0Layer2.call(f0);
             f0 = obj.F0Layer3.call(f0);
             
+            % concatenate and pass through recurrent layer
             out = [ld f0];
-            
             out = [out obj.GRU.call(out)];
             
+            % pass through output stack and projection
             out = obj.OutLayer1.call(out);
             out = obj.OutLayer2.call(out);
             out = obj.OutLayer3.call(out);
-            
             out = out * obj.OutProjKernel + obj.OutProjBias;
+            
+            % extract parameters from projecteed output
+            amp = out(1);
+            harmDist = out(2:obj.nHarmonics+1);
+            noiseMags = out(obj.nHarmonics+2:end);
         end
         
         function reset(obj)
+            % Reset the internal state of the recurrent layer
             obj.GRU.reset;
         end
     end
