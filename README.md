@@ -15,3 +15,4 @@ It's also possible to [train your own network](https://colab.research.google.com
 
 For further detail, refer to this video:
 
+https://youtu.be/c_pZHzz_1bs
