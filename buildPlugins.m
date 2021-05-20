@@ -1,4 +1,5 @@
 % helper script to build plugins for each weight file
+addpath('plugincode');
 
 validateAudioPlugin violinPlugin;
 generateAudioPlugin violinPlugin;
