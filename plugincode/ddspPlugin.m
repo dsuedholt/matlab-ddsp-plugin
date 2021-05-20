@@ -122,6 +122,10 @@ classdef ddspPlugin < audioPlugin
             
             % pitch detection buffers are downsampled for speed
             plugin.PrevFrame = zeros(ceil(plugin.FrameSize/2), 1);
+            
+            % to make sure. still need to initialize properties in the
+            % constructor for code generation
+            plugin.reset;
         end
       
         function out = process(plugin, in)
@@ -154,8 +158,8 @@ classdef ddspPlugin < audioPlugin
             % reset buffers and decoder and adjust latency to new FrameSize
             
             plugin.CurrFrameSize = plugin.FrameSize;
-            plugin.setLatencyInSamples(plugin.FrameSize);
-            plugin.PrevFrame =  zeros(ceil(plugin.FrameSize/2), 1);
+            plugin.setLatencyInSamples(plugin.FrameSize); %requires MATLAB >= R2020b
+            plugin.PrevFrame = zeros(ceil(plugin.FrameSize/2), 1);
             plugin.Dec.reset;
             plugin.InBuf.reset;
             plugin.OutBuf.reset(plugin.FrameSize);
