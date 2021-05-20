@@ -11,7 +11,7 @@ To turn a trained decoder into a MATLAB plugin, simply inherit the `plugincode/d
 
 It's also possible to [train your own network](https://colab.research.google.com/github/magenta/ddsp/blob/master/ddsp/colab/demos/train_autoencoder.ipynb) with the same architecture as the ones in the timbre transfer demo, and use the `extract_weights.py` script to turn a checkpoint into a MAT file.
 
-`buildPlugins.m` constructs timbre transfer plugins for the four provided examples.
+`buildPlugins.m` constructs timbre transfer plugins for the four provided examples. You can also build the plugins individually, if you call `addpath('plugincode')` first.
 
 For further detail, refer to this video:
 
