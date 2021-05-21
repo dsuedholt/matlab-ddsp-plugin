@@ -13,5 +13,6 @@ It's also possible to [train your own network](https://colab.research.google.com
 
 `buildPlugins.m` constructs timbre transfer plugins for the four provided examples. You can also build the plugins individually, if you call `addpath('plugincode')` first.
 
-For further detail, refer to this video:
+For further detail and a demonstration, refer to this video:
 
+https://youtu.be/c_pZHzz_1bs
